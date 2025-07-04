@@ -19,6 +19,17 @@ var doneCmd = &cobra.Command{
 			return
 		}
 
+		completed, _, err := database.GetTopicStatus(id)
+		if err != nil {
+			fmt.Println("Error getting topic status:", err)
+			return
+		}
+
+		if completed {
+			fmt.Println("Topic is already completed.")
+			return
+		}
+
 		if err := database.MarkTopicDone(id); err != nil {
 			fmt.Println("Error marking topic as done:", err)
 		} else {

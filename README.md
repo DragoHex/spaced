@@ -49,13 +49,31 @@ Archives a completed topic. This will hide it from the main list.
 spaced archive 1
 ```
 
-### `modify [topic_id] [new_topic]`
+### `unarchive [topic_id]`
 
-Modifies the text of an existing topic.
+Unarchives a topic, making it visible in the main list again.
 
 **Example:**
 ```
-spaced modify 1 "Learn advanced Go Generics"
+spaced unarchive 1
+```
+
+### `modify [topic_id] --topic "new_topic_text" --review-cycle <cycle_number>`
+
+Modifies an existing topic's text or its review cycle. You must provide at least one of the flags.
+
+Review cycles are:
+- 0: Day 1 (initial addition)
+- 1: Day 3
+- 2: Day 8
+- 3: Day 15
+- 4: Day 30
+
+**Examples:**
+```
+spaced modify 1 --topic "Learn advanced Go Generics and Concurrency"
+spaced modify 1 --review-cycle 2
+spaced modify 1 --topic "Learn advanced Go Generics and Concurrency" --review-cycle 2
 ```
 
 ### `delete [topic_id]`

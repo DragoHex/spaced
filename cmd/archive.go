@@ -19,6 +19,17 @@ var archiveCmd = &cobra.Command{
 			return
 		}
 
+		_, archived, err := database.GetTopicStatus(id)
+		if err != nil {
+			fmt.Println("Error getting topic status:", err)
+			return
+		}
+
+		if archived {
+			fmt.Println("Topic is already archived.")
+			return
+		}
+
 		if err := database.ArchiveTopic(id); err != nil {
 			fmt.Println("Error archiving topic:", err)
 		} else {
