@@ -84,3 +84,6 @@ Deletes a topic from your list.
 ```
 spaced delete 1
 ```
+
+## Data storage
+The CLI uses SQLite as a DB and all the data is being stored on local storage, in a db file at the same locaiton as the binary.
