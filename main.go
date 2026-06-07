@@ -1,6 +1,8 @@
 package main
 
-import "spaced/cmd"
+import (
+	"spaced/cmd"
+)
 
 func main() {
 	cmd.Execute()

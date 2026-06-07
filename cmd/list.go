@@ -2,104 +2,99 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/fatih/color"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"spaced/database"
 )
 
+var (
+	listProjectFilter  string
+	listOverdue        bool
+	listCompleted      bool
+	listIncludeArchived bool
+)
+
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all topics.",
+	Short: "List topics. Use flags to filter.",
 	Run: func(cmd *cobra.Command, args []string) {
-		topics, err := database.GetAllTopics()
+		filter := database.TopicFilter{
+			Overdue:         listOverdue,
+			Completed:       listCompleted,
+			IncludeArchived: listIncludeArchived,
+		}
+
+		if listProjectFilter != "" {
+			projectID, err := database.GetOrCreateProject(listProjectFilter)
+			if err != nil {
+				fmt.Println("Error resolving project:", err)
+				return
+			}
+			filter.ProjectID = &projectID
+		}
+
+		topics, err := database.GetTopicsFiltered(filter)
 		if err != nil {
 			fmt.Println("Error getting topics:", err)
 			return
 		}
-
 		if len(topics) == 0 {
 			fmt.Println("No topics found.")
 			return
 		}
 
-		// ANSI escape codes for green color and reset
-		const (
-			green = "\033[32m"
-			red   = "\033[31m"
-			reset = "\033[0m"
-		)
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"ID", "Topic", "Project", "Created", "Next Review", "Cycle", "Done", "Archived"})
+		table.SetBorder(false)
+		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+		table.SetAlignment(tablewriter.ALIGN_LEFT)
+		table.SetColumnSeparator("  ")
+		table.SetHeaderLine(true)
 
-		headers := []string{"ID", "Topic", "Created", "Next Review", "Review Cycle", "Completed", "Archived"}
-		colWidths := make([]int, len(headers))
-
-		// Initialize column widths with header lengths
-		for i, header := range headers {
-			colWidths[i] = len(header)
-		}
-
-		// Calculate maximum column widths based on data
-		for _, topic := range topics {
-			// Convert all fields to string for length calculation
-			data := []string{
-				fmt.Sprintf("%d", topic["id"]),
-				fmt.Sprintf("%s", topic["topic"]),
-				topic["created_at"].(time.Time).Format("2006-01-02"),
-				topic["next_review_at"].(time.Time).Format("2006-01-02"),
-				fmt.Sprintf("Day %d", database.GetReviewDay(topic["review_cycle"].(int64))),
-				fmt.Sprintf("%t", topic["completed"]),
-				fmt.Sprintf("%t", topic["archived"]),
+		now := time.Now()
+		for _, t := range topics {
+			projectLabel := t.ProjectName
+			if projectLabel == "" {
+				projectLabel = "-"
 			}
-			for i, d := range data {
-				if len(d) > colWidths[i] {
-					colWidths[i] = len(d)
+			row := []string{
+				fmt.Sprintf("%d", t.ID),
+				t.Topic,
+				projectLabel,
+				t.CreatedAt.Format("2006-01-02"),
+				t.NextReviewAt.Format("2006-01-02"),
+				fmt.Sprintf("Day %d", database.GetReviewDay(t.ReviewCycle)),
+				fmt.Sprintf("%t", t.Completed),
+				fmt.Sprintf("%t", t.Archived),
+			}
+
+			colors := make([]tablewriter.Colors, len(row))
+			if t.Completed {
+				_ = color.New(color.FgGreen)
+				for i := range colors {
+					colors[i] = tablewriter.Colors{tablewriter.FgGreenColor}
+				}
+			} else if t.NextReviewAt.Before(now) && !t.Archived {
+				_ = color.New(color.FgRed)
+				for i := range colors {
+					colors[i] = tablewriter.Colors{tablewriter.FgRedColor}
 				}
 			}
+			table.Rich(row, colors)
 		}
 
-		// Print header
-		for i, header := range headers {
-			fmt.Printf("%-" + fmt.Sprintf("%d", colWidths[i]) + "s  ", header)
-		}
-		fmt.Println()
-
-		// Print separator
-		for i := range headers {
-			for j := 0; j < colWidths[i]; j++ {
-				fmt.Print("-")
-			}
-			fmt.Print("  ")
-		}
-		fmt.Println()
-
-		// Print data rows
-		for _, topic := range topics {
-			data := []string{
-				fmt.Sprintf("%d", topic["id"]),
-				fmt.Sprintf("%s", topic["topic"]),
-				topic["created_at"].(time.Time).Format("2006-01-02"),
-				topic["next_review_at"].(time.Time).Format("2006-01-02"),
-				fmt.Sprintf("Day %d", database.GetReviewDay(topic["review_cycle"].(int64))),
-				fmt.Sprintf("%t", topic["completed"]),
-				fmt.Sprintf("%t", topic["archived"]),
-			}
-
-			colorToApply := ""
-			if topic["completed"].(bool) {
-				colorToApply = green
-			} else if topic["next_review_at"].(time.Time).Before(time.Now()) {
-				colorToApply = red
-			}
-
-			for i, d := range data {
-				formattedCell := fmt.Sprintf("%-" + fmt.Sprintf("%d", colWidths[i]) + "s", d)
-				fmt.Print(colorToApply + formattedCell + reset + "  ")
-			}
-			fmt.Println()
-		}
+		table.Render()
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+	listCmd.Flags().StringVar(&listProjectFilter, "project", "", "Filter by project name")
+	listCmd.Flags().BoolVar(&listOverdue, "overdue", false, "Show only overdue topics")
+	listCmd.Flags().BoolVar(&listCompleted, "completed", false, "Show only completed topics")
+	listCmd.Flags().BoolVar(&listIncludeArchived, "archived", false, "Include archived topics")
 }
