@@ -8,13 +8,22 @@ import (
 
 // TopicGroup holds topics belonging to one project (or no project).
 type TopicGroup struct {
-	ProjectName string
-	Topics      []Topic
+	ProjectName        string
+	ProjectDescription string
+	Topics             []Topic
 }
 
 // GetTopicsGroupedByProject returns ALL topics (including archived/completed)
 // grouped by project. Topics without a project are in a group with ProjectName "".
 func GetTopicsGroupedByProject() ([]TopicGroup, error) {
+	// Build a description lookup by project name.
+	descByName := map[string]string{}
+	if projects, err := GetAllProjects(); err == nil {
+		for _, p := range projects {
+			descByName[p.Name] = p.Description
+		}
+	}
+
 	rows, err := db.Query(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
 		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
@@ -31,13 +40,16 @@ func GetTopicsGroupedByProject() ([]TopicGroup, error) {
 		return nil, err
 	}
 
-	// Group topics.
+	// Group topics preserving insertion order.
 	groupMap := make(map[string]*TopicGroup)
 	var order []string
 	for _, t := range topics {
 		key := t.ProjectName
 		if _, ok := groupMap[key]; !ok {
-			groupMap[key] = &TopicGroup{ProjectName: key}
+			groupMap[key] = &TopicGroup{
+				ProjectName:        key,
+				ProjectDescription: descByName[key],
+			}
 			order = append(order, key)
 		}
 		groupMap[key].Topics = append(groupMap[key].Topics, t)
@@ -62,6 +74,9 @@ func RenderMarkdown(groups []TopicGroup) string {
 			heading = "Unassigned"
 		}
 		b.WriteString(fmt.Sprintf("## %s\n\n", heading))
+		if g.ProjectDescription != "" {
+			b.WriteString(fmt.Sprintf("_%s_\n\n", g.ProjectDescription))
+		}
 		b.WriteString("| ID | Topic | Cycle | Next Review | Status | Notes |\n")
 		b.WriteString("|----|-------|-------|-------------|--------|-------|\n")
 
@@ -90,10 +105,9 @@ func RenderMarkdown(groups []TopicGroup) string {
 // RenderCSV produces a CSV export of the topic groups.
 func RenderCSV(groups []TopicGroup) string {
 	var b strings.Builder
-	b.WriteString("ID,Topic,Project,Notes,Cycle,Created,Next Review,Status\n")
+	b.WriteString("ID,Topic,Project,Project Description,Notes,Cycle,Created,Next Review,Status\n")
 
 	for _, g := range groups {
-		projectName := g.ProjectName
 		for _, t := range g.Topics {
 			status := "In Progress"
 			if t.Completed {
@@ -101,10 +115,11 @@ func RenderCSV(groups []TopicGroup) string {
 			} else if t.Archived {
 				status = "Archived"
 			}
-			b.WriteString(fmt.Sprintf("%d,%s,%s,%s,Day %d,%s,%s,%s\n",
+			b.WriteString(fmt.Sprintf("%d,%s,%s,%s,%s,Day %d,%s,%s,%s\n",
 				t.ID,
 				csvEscape(t.Topic),
-				csvEscape(projectName),
+				csvEscape(g.ProjectName),
+				csvEscape(g.ProjectDescription),
 				csvEscape(t.Notes),
 				GetReviewDay(t.ReviewCycle),
 				t.CreatedAt.Format("2006-01-02"),

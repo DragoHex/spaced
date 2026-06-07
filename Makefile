@@ -1,5 +1,5 @@
 .PHONY: build
 build:
-	go build -o spaced
+	go build -o spd
 
 ${V}.SILENT:
