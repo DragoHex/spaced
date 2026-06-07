@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/fatih/color v1.18.0
 	github.com/mattn/go-sqlite3 v1.14.28
-	github.com/olekukonko/tablewriter v1.0.8
+	github.com/olekukonko/tablewriter v0.0.5
 	github.com/spf13/cobra v1.9.1
 )
 
