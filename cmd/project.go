@@ -10,6 +10,11 @@ import (
 	"spaced/database"
 )
 
+var (
+	projectAddDescription    string
+	projectDescribeText      string
+)
+
 var projectCmd = &cobra.Command{
 	Use:   "project",
 	Short: "Manage projects.",
@@ -20,11 +25,18 @@ var projectAddCmd = &cobra.Command{
 	Short: "Create a new project.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := database.AddProject(args[0]); err != nil {
+		name := args[0]
+		var err error
+		if projectAddDescription != "" {
+			err = database.AddProjectWithDescription(name, projectAddDescription)
+		} else {
+			err = database.AddProject(name)
+		}
+		if err != nil {
 			fmt.Println("Error creating project:", err)
 			return
 		}
-		fmt.Printf("Project %q created.\n", args[0])
+		fmt.Printf("Project %q created.\n", name)
 	},
 }
 
@@ -43,12 +55,17 @@ var projectListCmd = &cobra.Command{
 		}
 
 		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader([]string{"ID", "Name"})
+		table.SetHeader([]string{"ID", "Name", "Description"})
 		table.SetBorder(false)
 		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 		table.SetAlignment(tablewriter.ALIGN_LEFT)
+		table.SetColWidth(50)
 		for _, p := range projects {
-			table.Append([]string{fmt.Sprintf("%d", p.ID), p.Name})
+			desc := p.Description
+			if desc == "" {
+				desc = "-"
+			}
+			table.Append([]string{fmt.Sprintf("%d", p.ID), p.Name, desc})
 		}
 		table.Render()
 	},
@@ -69,6 +86,28 @@ var projectRenameCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Project renamed to %q.\n", args[1])
+	},
+}
+
+var projectDescribeCmd = &cobra.Command{
+	Use:   "describe [project_id]",
+	Short: "Set or update a project's description.",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			fmt.Println("Invalid project ID.")
+			return
+		}
+		if projectDescribeText == "" {
+			fmt.Println("Error: --text flag is required.")
+			return
+		}
+		if err := database.UpdateProjectDescription(id, projectDescribeText); err != nil {
+			fmt.Println("Error updating description:", err)
+			return
+		}
+		fmt.Println("Project description updated.")
 	},
 }
 
@@ -95,5 +134,9 @@ func init() {
 	projectCmd.AddCommand(projectAddCmd)
 	projectCmd.AddCommand(projectListCmd)
 	projectCmd.AddCommand(projectRenameCmd)
+	projectCmd.AddCommand(projectDescribeCmd)
 	projectCmd.AddCommand(projectDeleteCmd)
+
+	projectAddCmd.Flags().StringVar(&projectAddDescription, "description", "", "Optional description for the project")
+	projectDescribeCmd.Flags().StringVar(&projectDescribeText, "text", "", "New description text")
 }

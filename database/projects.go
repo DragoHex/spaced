@@ -7,8 +7,9 @@ import (
 
 // Project represents a grouping of related topics.
 type Project struct {
-	ID   int64
-	Name string
+	ID          int64
+	Name        string
+	Description string
 }
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -16,28 +17,37 @@ type Project struct {
 func createProjectsTable() {
 	_, err := db.Exec(`
 	CREATE TABLE IF NOT EXISTS projects (
-		id   INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL UNIQUE,
+		description TEXT NOT NULL DEFAULT ''
 	);`)
 	if err != nil {
 		panic(fmt.Sprintf("create projects table: %v", err))
 	}
 
-	// Add project_id to topics if it doesn't exist yet (idempotent migration).
+	// Idempotent migrations for production DBs created before this version.
 	db.Exec(`ALTER TABLE topics ADD COLUMN project_id INTEGER REFERENCES projects(id)`)
+	db.Exec(`ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT ''`)
 }
 
 // ── Project CRUD ──────────────────────────────────────────────────────────────
 
-// AddProject creates a new project. Returns an error if the name already exists.
+// AddProject creates a new project with an empty description.
+// Returns an error if the name already exists.
 func AddProject(name string) error {
-	_, err := db.Exec(`INSERT INTO projects (name) VALUES (?)`, name)
+	_, err := db.Exec(`INSERT INTO projects (name, description) VALUES (?, '')`, name)
+	return err
+}
+
+// AddProjectWithDescription creates a new project with the given description.
+func AddProjectWithDescription(name, description string) error {
+	_, err := db.Exec(`INSERT INTO projects (name, description) VALUES (?, ?)`, name, description)
 	return err
 }
 
 // GetAllProjects returns all projects ordered by name.
 func GetAllProjects() ([]Project, error) {
-	rows, err := db.Query(`SELECT id, name FROM projects ORDER BY name ASC`)
+	rows, err := db.Query(`SELECT id, name, description FROM projects ORDER BY name ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +56,7 @@ func GetAllProjects() ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
@@ -55,7 +65,7 @@ func GetAllProjects() ([]Project, error) {
 }
 
 // GetOrCreateProject returns the id of the project with the given name,
-// creating it if it doesn't exist.
+// creating it (with an empty description) if it doesn't exist.
 func GetOrCreateProject(name string) (int64, error) {
 	var id int64
 	err := db.QueryRow(`SELECT id FROM projects WHERE name = ?`, name).Scan(&id)
@@ -65,16 +75,30 @@ func GetOrCreateProject(name string) (int64, error) {
 	if err != sql.ErrNoRows {
 		return 0, err
 	}
-	result, err := db.Exec(`INSERT INTO projects (name) VALUES (?)`, name)
+	result, err := db.Exec(`INSERT INTO projects (name, description) VALUES (?, '')`, name)
 	if err != nil {
 		return 0, err
 	}
 	return result.LastInsertId()
 }
 
+// GetProjectByID returns the project with the given id.
+func GetProjectByID(id int64) (Project, error) {
+	var p Project
+	err := db.QueryRow(`SELECT id, name, description FROM projects WHERE id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.Description)
+	return p, err
+}
+
 // RenameProject changes the name of an existing project.
 func RenameProject(id int64, newName string) error {
 	_, err := db.Exec(`UPDATE projects SET name = ? WHERE id = ?`, newName, id)
+	return err
+}
+
+// UpdateProjectDescription sets the description for an existing project.
+func UpdateProjectDescription(id int64, description string) error {
+	_, err := db.Exec(`UPDATE projects SET description = ? WHERE id = ?`, description, id)
 	return err
 }
 
