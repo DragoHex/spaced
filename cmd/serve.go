@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,7 +34,7 @@ var serveCmd = &cobra.Command{
 		}
 
 		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(quit, os.Interrupt)
 		<-quit
 
 		fmt.Fprintln(os.Stdout, "\nShutting down...")
