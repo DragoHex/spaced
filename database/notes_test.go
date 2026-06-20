@@ -7,7 +7,7 @@ import (
 func TestAddTopicWithNotes(t *testing.T) {
 	setupTestDB(t)
 
-	if err := AddTopicWithNotes("Merge Sort", "Divide and conquer, O(n log n)"); err != nil {
+	if _, err := AddTopicWithNotes("Merge Sort", "Divide and conquer, O(n log n)"); err != nil {
 		t.Fatalf("AddTopicWithNotes: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestAddTopicFullOptions(t *testing.T) {
 	setupTestDB(t)
 
 	pID, _ := GetOrCreateProject("Go")
-	err := AddTopicFull("Goroutines", "Lightweight threads managed by the Go runtime", pID)
+	_, err := AddTopicFull("Goroutines", "Lightweight threads managed by the Go runtime", pID)
 	if err != nil {
 		t.Fatalf("AddTopicFull: %v", err)
 	}

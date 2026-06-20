@@ -10,7 +10,9 @@ type TopicFilter struct {
 	ProjectID       *int64 // if non-nil, restrict to this project
 	Overdue         bool   // only topics past their next_review_at
 	Completed       bool   // only completed topics
-	IncludeArchived bool   // include archived topics (default: exclude)
+	IncludeArchived bool   // also include archived topics (default: exclude)
+	ArchivedOnly    bool   // only archived topics
+	ParkedOnly      bool   // only parked topics
 }
 
 // GetTopicsFiltered returns topics matching the given filter.
@@ -30,8 +32,13 @@ func GetTopicsFiltered(f TopicFilter) ([]Topic, error) {
 	if f.Completed {
 		conds = append(conds, "t.completed = true")
 	}
-	if !f.IncludeArchived {
+	if f.ArchivedOnly {
+		conds = append(conds, "t.archived = true")
+	} else if !f.IncludeArchived {
 		conds = append(conds, "t.archived = false")
+	}
+	if f.ParkedOnly {
+		conds = append(conds, "t.parked = true")
 	}
 
 	where := ""
@@ -41,11 +48,11 @@ func GetTopicsFiltered(f TopicFilter) ([]Topic, error) {
 
 	query := fmt.Sprintf(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
-		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
+		       t.completed, t.archived, t.parked, t.easiness_factor, t.interval_days, t.project_id, p.name
 		FROM topics t
 		LEFT JOIN projects p ON t.project_id = p.id
 		%s
-		ORDER BY t.completed ASC, t.created_at DESC`, where)
+		ORDER BY t.completed ASC, t.next_review_at DESC`, where)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {

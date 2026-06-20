@@ -26,7 +26,7 @@ func GetTopicsGroupedByProject() ([]TopicGroup, error) {
 
 	rows, err := db.Query(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
-		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
+		       t.completed, t.archived, t.parked, t.easiness_factor, t.interval_days, t.project_id, p.name
 		FROM topics t
 		LEFT JOIN projects p ON t.project_id = p.id
 		ORDER BY COALESCE(p.name, ''), t.created_at ASC`)

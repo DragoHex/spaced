@@ -101,7 +101,7 @@ func TestAddTopicWithProject(t *testing.T) {
 	setupTestDB(t)
 
 	pID, _ := GetOrCreateProject("Algorithms")
-	if err := AddTopicWithProject("Binary Search", pID); err != nil {
+	if _, err := AddTopicWithProject("Binary Search", pID); err != nil {
 		t.Fatalf("AddTopicWithProject: %v", err)
 	}
 

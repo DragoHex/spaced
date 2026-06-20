@@ -114,14 +114,17 @@ func DeleteProject(id int64) error {
 // ── Topic ↔ Project ───────────────────────────────────────────────────────────
 
 // AddTopicWithProject inserts a topic and associates it with a project.
-func AddTopicWithProject(topic string, projectID int64) error {
+func AddTopicWithProject(topic string, projectID int64) (int64, error) {
 	now := nowFn()
-	_, err := db.Exec(
+	res, err := db.Exec(
 		`INSERT INTO topics (topic, created_at, next_review_at, review_cycle, completed, archived, project_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		topic, now, now, 0, false, false, projectID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 // AssignTopicToProject updates a topic's project association.
@@ -134,7 +137,7 @@ func AssignTopicToProject(topicID, projectID int64) error {
 func GetTopicsByProject(projectID int64) ([]Topic, error) {
 	rows, err := db.Query(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
-		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
+		       t.completed, t.archived, t.parked, t.easiness_factor, t.interval_days, t.project_id, p.name
 		FROM topics t
 		LEFT JOIN projects p ON t.project_id = p.id
 		WHERE t.project_id = ?

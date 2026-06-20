@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -21,6 +22,7 @@ type Topic struct {
 	ReviewCycle     int64
 	Completed       bool
 	Archived        bool
+	Parked          bool
 	EasinessFactor  float64
 	IntervalDays    int64
 	ProjectID       *int64
@@ -29,18 +31,17 @@ type Topic struct {
 
 var db *sql.DB
 
-// reviewSchedule maps review cycle → day number from creation shown to user.
-var reviewSchedule = []int{1, 3, 8, 15, 30}
+// cycleDays maps review cycle → absolute days from createdAt for next_review_at.
+// Cycle 0 = day 0 (immediate), then 1, 4, 11, 25, 55, 115.
+var cycleDays = []int{0, 1, 4, 11, 25, 55, 115}
 
-// cycleDays maps review cycle → days to add to createdAt to get next_review_at.
-var cycleDays = []int{0, 2, 7, 14, 29}
-
-// GetReviewDay returns the human-readable day number for a given review cycle.
+// GetReviewDay returns the day-from-creation label for a given review cycle.
+// Cycle 3 → "Day 11", cycle 4 → "Day 25", etc.
 func GetReviewDay(cycle int64) int {
-	if cycle < 0 || int(cycle) >= len(reviewSchedule) {
+	if cycle < 0 || int(cycle) >= len(cycleDays) {
 		return 0
 	}
-	return reviewSchedule[cycle]
+	return cycleDays[cycle]
 }
 
 func resolveDBPath() string {
@@ -87,6 +88,7 @@ func createTables() {
 		review_cycle     INT NOT NULL,
 		completed        BOOLEAN NOT NULL,
 		archived         BOOLEAN NOT NULL,
+		parked           BOOLEAN NOT NULL DEFAULT 0,
 		easiness_factor  REAL NOT NULL DEFAULT 2.5,
 		interval_days    INT NOT NULL DEFAULT 0,
 		project_id       INTEGER REFERENCES projects(id)
@@ -95,6 +97,15 @@ func createTables() {
 		log.Fatal(err)
 	}
 	createProjectsTable()
+	createReviewLogsTable()
+	migrateParkedColumn()
+}
+
+func migrateParkedColumn() {
+	_, err := db.Exec(`ALTER TABLE topics ADD COLUMN parked BOOLEAN NOT NULL DEFAULT 0`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		log.Fatal("migrate parked column:", err)
+	}
 }
 
 // nowFn can be swapped in tests for deterministic time.
@@ -102,7 +113,7 @@ var nowFn = func() time.Time { return time.Now() }
 
 // scanTopics reads a "topics LEFT JOIN projects" result set into []Topic.
 // Expected column order: id, topic, notes, created_at, next_review_at,
-// review_cycle, completed, archived, easiness_factor, interval_days,
+// review_cycle, completed, archived, parked, easiness_factor, interval_days,
 // project_id, project_name.
 func scanTopics(rows interface {
 	Next() bool
@@ -116,7 +127,7 @@ func scanTopics(rows interface {
 		var projectName sql.NullString
 		if err := rows.Scan(
 			&t.ID, &t.Topic, &t.Notes, &t.CreatedAt, &t.NextReviewAt,
-			&t.ReviewCycle, &t.Completed, &t.Archived,
+			&t.ReviewCycle, &t.Completed, &t.Archived, &t.Parked,
 			&t.EasinessFactor, &t.IntervalDays,
 			&projectID, &projectName,
 		); err != nil {
@@ -147,10 +158,10 @@ func AddTopic(topic string) error {
 func GetTopicsToReview() ([]Topic, error) {
 	rows, err := db.Query(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
-		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
+		       t.completed, t.archived, t.parked, t.easiness_factor, t.interval_days, t.project_id, p.name
 		FROM topics t
 		LEFT JOIN projects p ON t.project_id = p.id
-		WHERE t.next_review_at <= ? AND t.completed = false AND t.archived = false`,
+		WHERE t.next_review_at <= ? AND t.completed = false AND t.archived = false AND t.parked = false`,
 		nowFn(),
 	)
 	if err != nil {
@@ -169,17 +180,22 @@ func MarkTopicDone(id int64) (nextReviewAt time.Time, err error) {
 		return
 	}
 
-	if cycle == 4 {
+	if cycle == 6 {
 		_, err = db.Exec(`UPDATE topics SET completed = true WHERE id = ?`, id)
 		return
 	}
-	if cycle < 0 || cycle > 4 {
+	if cycle < 0 || cycle > 6 {
 		err = fmt.Errorf("invalid review cycle: %d", cycle)
 		return
 	}
 
+	// Schedule on the absolute day from creation. If that date is already past
+	// (overdue review), fall back to tomorrow so we never schedule into the past.
 	newCycle := cycle + 1
 	nextReviewAt = createdAt.AddDate(0, 0, cycleDays[newCycle])
+	if tomorrow := nowFn().AddDate(0, 0, 1); nextReviewAt.Before(tomorrow) {
+		nextReviewAt = tomorrow
+	}
 	_, err = db.Exec(
 		`UPDATE topics SET next_review_at = ?, review_cycle = ? WHERE id = ?`,
 		nextReviewAt, newCycle, id,
@@ -190,7 +206,7 @@ func MarkTopicDone(id int64) (nextReviewAt time.Time, err error) {
 func GetAllTopics() ([]Topic, error) {
 	rows, err := db.Query(`
 		SELECT t.id, t.topic, t.notes, t.created_at, t.next_review_at, t.review_cycle,
-		       t.completed, t.archived, t.easiness_factor, t.interval_days, t.project_id, p.name
+		       t.completed, t.archived, t.parked, t.easiness_factor, t.interval_days, t.project_id, p.name
 		FROM topics t
 		LEFT JOIN projects p ON t.project_id = p.id
 		WHERE t.archived = false
@@ -218,8 +234,8 @@ func ModifyTopic(id int64, newTopic string) error {
 }
 
 func UpdateTopicReviewCycle(id int64, newCycle int64) error {
-	if newCycle < 0 || newCycle > 4 {
-		return fmt.Errorf("invalid review cycle %d: must be 0–4", newCycle)
+	if newCycle < 0 || newCycle > 6 {
+		return fmt.Errorf("invalid review cycle %d: must be 0–6", newCycle)
 	}
 	var createdAt time.Time
 	if err := db.QueryRow(`SELECT created_at FROM topics WHERE id = ?`, id).

@@ -48,7 +48,7 @@ func TestGetStats_CountsCompleted(t *testing.T) {
 	topics, _ := GetAllTopics()
 	for _, tp := range topics {
 		if tp.Topic == "A" {
-			for i := 0; i < 5; i++ {
+			for i := 0; i < 7; i++ {
 				MarkTopicDone(tp.ID)
 			}
 		}
@@ -83,7 +83,32 @@ func TestGetStats_Overdue(t *testing.T) {
 		t.Errorf("expected 1 overdue, got %d", stats.Overdue)
 	}
 	if stats.DueToday != 1 {
-		t.Errorf("expected 1 due today (also overdue counts as due), got %d", stats.DueToday)
+		t.Errorf("expected 1 due today (overdue topics count as due), got %d", stats.DueToday)
+	}
+}
+
+func TestGetStats_ParkedExcludedFromInProgress(t *testing.T) {
+	setupTestDB(t)
+
+	AddTopic("Active")
+	AddTopic("ToBeParked")
+
+	topics, _ := GetAllTopics()
+	for _, tp := range topics {
+		if tp.Topic == "ToBeParked" {
+			ParkTopic(tp.ID)
+		}
+	}
+
+	stats, _ := GetStats()
+	if stats.Parked != 1 {
+		t.Errorf("expected 1 parked, got %d", stats.Parked)
+	}
+	if stats.InProgress != 1 {
+		t.Errorf("expected InProgress=1 (parked excluded), got %d", stats.InProgress)
+	}
+	if stats.Total != 2 {
+		t.Errorf("expected Total=2, got %d", stats.Total)
 	}
 }
 
