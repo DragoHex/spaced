@@ -79,6 +79,6 @@ func init() {
 	rootCmd.AddCommand(modifyCmd)
 	modifyCmd.Flags().StringVar(&modifyTopic, "topic", "", "New topic text")
 	modifyCmd.Flags().StringVar(&modifyNotes, "notes", "", "New notes or context")
-	modifyCmd.Flags().Int64Var(&modifyReviewCycle, "review-cycle", 0, "New review cycle (0–4)")
+	modifyCmd.Flags().Int64Var(&modifyReviewCycle, "review-cycle", 0, "New review cycle (0–6)")
 	modifyCmd.Flags().StringVar(&modifyProject, "project", "", "Assign to a project (created if needed)")
 }

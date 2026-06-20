@@ -233,9 +233,9 @@ func ImportGroups(groups []ImportGroup) (int, error) {
 			}
 			var err error
 			if projectID != 0 {
-				err = AddTopicFull(t.Topic, t.Notes, projectID)
+				_, err = AddTopicFull(t.Topic, t.Notes, projectID)
 			} else {
-				err = AddTopicWithNotes(t.Topic, t.Notes)
+				_, err = AddTopicWithNotes(t.Topic, t.Notes)
 			}
 			if err != nil {
 				return count, fmt.Errorf("topic %q: %w", t.Topic, err)

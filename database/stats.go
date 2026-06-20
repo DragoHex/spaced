@@ -1,10 +1,13 @@
 package database
 
+import "time"
+
 // Stats holds aggregate counts for the dashboard.
 type Stats struct {
 	Total      int
 	Completed  int
 	InProgress int
+	Parked     int
 	Overdue    int
 	DueToday   int
 	Archived   int
@@ -33,21 +36,35 @@ func GetStats() (Stats, error) {
 		return s, err
 	}
 
-	s.InProgress = s.Total - s.Completed
+	// Parked (non-archived)
+	err = db.QueryRow(`SELECT COUNT(*) FROM topics WHERE parked = true AND archived = false`).Scan(&s.Parked)
+	if err != nil {
+		return s, err
+	}
 
-	// Due today (next_review_at <= now, not completed, not archived)
+	s.InProgress = s.Total - s.Completed - s.Parked
+
 	now := nowFn()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	// DueToday: all items needing review today or earlier (includes overdue)
 	err = db.QueryRow(
-		`SELECT COUNT(*) FROM topics WHERE next_review_at <= ? AND completed = false AND archived = false`,
-		now,
+		`SELECT COUNT(*) FROM topics WHERE next_review_at <= ? AND completed = false AND archived = false AND parked = false`,
+		endOfDay,
 	).Scan(&s.DueToday)
 	if err != nil {
 		return s, err
 	}
 
-	// Overdue means past next_review_at and not completed (same as due today in practice,
-	// but we surface it as a distinct label so callers can decide how to present it).
-	s.Overdue = s.DueToday
+	// Overdue: strictly past due (before start of today)
+	err = db.QueryRow(
+		`SELECT COUNT(*) FROM topics WHERE next_review_at < ? AND completed = false AND archived = false AND parked = false`,
+		startOfDay,
+	).Scan(&s.Overdue)
+	if err != nil {
+		return s, err
+	}
 
 	// Project count
 	err = db.QueryRow(`SELECT COUNT(*) FROM projects`).Scan(&s.Projects)

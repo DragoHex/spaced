@@ -13,6 +13,7 @@ var (
 	addProjectName string
 	addProjectID   int64
 	addNotes       string
+	addPark        bool
 )
 
 var addCmd = &cobra.Command{
@@ -70,15 +71,27 @@ Flags --project and --project-id are mutually exclusive.`,
 			resolvedProjectName = unassignedProject
 		}
 
-		var err error
+		var (
+			newID int64
+			err   error
+		)
 		if addNotes != "" {
-			err = database.AddTopicFull(topic, addNotes, projectID)
+			newID, err = database.AddTopicFull(topic, addNotes, projectID)
 		} else {
-			err = database.AddTopicWithProject(topic, projectID)
+			newID, err = database.AddTopicWithProject(topic, projectID)
 		}
 
 		if err != nil {
 			fmt.Println("Error adding topic:", err)
+			return
+		}
+
+		if addPark {
+			if err := database.ParkTopic(newID); err != nil {
+				fmt.Println("Error parking topic:", err)
+				return
+			}
+			fmt.Printf("Topic added to project %q (parked — not in revision cycle).\n", resolvedProjectName)
 			return
 		}
 		fmt.Printf("Topic added to project %q.\n", resolvedProjectName)
@@ -90,4 +103,5 @@ func init() {
 	addCmd.Flags().StringVar(&addProjectName, "project", "", "Assign to a project by name (created if needed)")
 	addCmd.Flags().Int64Var(&addProjectID, "project-id", 0, "Assign to a project by its numeric ID")
 	addCmd.Flags().StringVar(&addNotes, "notes", "", "Optional notes or context for the topic")
+	addCmd.Flags().BoolVar(&addPark, "park", false, "Park the topic without adding it to the revision cycle")
 }

@@ -52,7 +52,7 @@ func TestGetTopicsFiltered_Completed(t *testing.T) {
 	topics, _ := GetAllTopics()
 	for _, tp := range topics {
 		if tp.Topic == "Done Topic" {
-			for i := 0; i < 5; i++ {
+			for i := 0; i < 7; i++ {
 				MarkTopicDone(tp.ID)
 			}
 		}

@@ -15,7 +15,7 @@ var doneCmd = &cobra.Command{
 	Short: "Mark a topic as reviewed and advance to the next cycle.",
 	Long: `Mark a topic as reviewed.
 
-Without --quality, uses the fixed schedule (Day 1 → 3 → 8 → 15 → 30).
+Without --quality, uses the fixed schedule (Day 1 → 4 → 11 → 25 → 55 → 115).
 With --quality (0–5), uses the SM-2 algorithm for adaptive intervals:
   0 = complete blackout
   1 = incorrect, remembered on seeing answer
@@ -48,6 +48,7 @@ With --quality (0–5), uses the SM-2 algorithm for adaptive intervals:
 				fmt.Println("Error marking topic as done:", err)
 				return
 			}
+			_ = database.LogReview(id)
 			topics, err := database.GetAllTopics()
 			if err != nil {
 				fmt.Printf("Done! Next review: %s\n", nextDate.Format("2006-01-02"))
@@ -73,6 +74,7 @@ With --quality (0–5), uses the SM-2 algorithm for adaptive intervals:
 			fmt.Println("Error marking topic as done:", err)
 			return
 		}
+		_ = database.LogReview(id)
 
 		topics, err := database.GetAllTopics()
 		if err != nil {

@@ -95,39 +95,33 @@ func TestMarkTopicDone_ProgressesThroughAllCycles(t *testing.T) {
 	id := topics[0].ID
 	createdAt := topics[0].CreatedAt
 
-	cases := []struct {
-		wantCycle       int64
-		wantDaysFromCreated int
-	}{
-		{1, 2},
-		{2, 7},
-		{3, 14},
-		{4, 29},
-	}
+	// next_review_at is always absolute from createdAt regardless of when the
+	// review actually happens (early, on-time, or late).
+	wantCycles := []int64{1, 2, 3, 4, 5, 6}
 
-	for _, c := range cases {
+	for _, wantCycle := range wantCycles {
 		if _, err := MarkTopicDone(id); err != nil {
-			t.Fatalf("MarkTopicDone → cycle %d: %v", c.wantCycle, err)
+			t.Fatalf("MarkTopicDone → cycle %d: %v", wantCycle, err)
 		}
 		topics, _ = GetAllTopics()
 		got := topics[0]
 
-		if got.ReviewCycle != c.wantCycle {
-			t.Errorf("review cycle: expected %d, got %d", c.wantCycle, got.ReviewCycle)
+		if got.ReviewCycle != wantCycle {
+			t.Errorf("review cycle: expected %d, got %d", wantCycle, got.ReviewCycle)
 		}
 
-		wantDate := createdAt.AddDate(0, 0, c.wantDaysFromCreated)
+		wantDate := createdAt.AddDate(0, 0, cycleDays[wantCycle])
 		diff := got.NextReviewAt.Sub(wantDate)
 		if diff < 0 {
 			diff = -diff
 		}
 		if diff > time.Second {
 			t.Errorf("next_review_at for cycle %d: expected %v, got %v (diff %v)",
-				c.wantCycle, wantDate, got.NextReviewAt, diff)
+				wantCycle, wantDate, got.NextReviewAt, diff)
 		}
 	}
 
-	// Fifth call marks as completed
+	// Seventh call marks as completed
 	if _, err := MarkTopicDone(id); err != nil {
 		t.Fatalf("final MarkTopicDone: %v", err)
 	}
@@ -240,11 +234,13 @@ func TestGetReviewDay(t *testing.T) {
 		cycle int64
 		want  int
 	}{
-		{0, 1},
-		{1, 3},
-		{2, 8},
-		{3, 15},
-		{4, 30},
+		{0, 0},
+		{1, 1},
+		{2, 4},
+		{3, 11},
+		{4, 25},
+		{5, 55},
+		{6, 115},
 	}
 	for _, c := range cases {
 		if got := GetReviewDay(c.cycle); got != c.want {
